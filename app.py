@@ -30,7 +30,7 @@ pipeOnnx = StableDiffusionOnnxPipeline.from_pretrained(
 
 def file_exists_s3(filename):
     try:
-        result = s3_client.list_objects(Bucket=BUCKET_NAME, Prefix=filename )["Contents"]
+        result = s3_client.list_objects(Bucket=BUCKET_NAME, Prefix=filename)["Contents"]
         if len(result) > 0:
            return True
         else:

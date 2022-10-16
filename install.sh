@@ -1,10 +1,14 @@
 #!/bin/sh
 echo -n "(Create New) Input AWS Lambda Function Name [ex.mySdFunction]:"
 read LAMBDANAME
-echo -n "[Hugging Face] Username:"
-read HFUSERNAME
 echo -n "[Hugging Face] User Access Tokens:"
 read HFTOKEN
+echo -n "[Hugging Face] Model Name [ex.CompVis/stable-diffusion-v1-4]:"
+read HFMODELNAME
+
+if [ -z ${HFMODELNAME} ]; then
+  HFMODELNAME="CompVis/stable-diffusion-v1-4"
+fi
 
 REGION=$(aws configure get region)
 ACCOUNTID=$(aws sts get-caller-identity --output text --query Account)
@@ -28,15 +32,22 @@ else
   exit
 fi
 
-echo "(2/6) Create Role"
+echo "(2/6) Build Container"
+aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNTID}.dkr.ecr.${REGION}.amazonaws.com
+docker build -t ${REPOSITORYNAME} --build-arg hf_token="${HFTOKEN}" --build-arg hf_modelname="${HFMODELNAME}" .
+if [ "`echo $(docker images) | grep $REPOSITORYNAME`" ]; then
+  echo "Success!!: Build image"
+else
+  aws ecr delete-repository --output text --repository-name ${REPOSITORYNAME} --force
+  echo "Error docker build."
+  exit
+fi
+docker tag ${REPOSITORYNAME}:latest ${ACCOUNTID}.dkr.ecr.${REGION}.amazonaws.com/${REPOSITORYNAME}:latest
+
+echo "(3/6) Create Role"
 RESULT=$(aws iam create-role --role-name ${ROLENAME} --assume-role-policy-document '{"Version": "2012-10-17","Statement": [{ "Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]}')
 aws iam attach-role-policy --role-name ${ROLENAME} --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 aws iam attach-role-policy --role-name ${ROLENAME} --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
-
-echo "(3/6) Build Container"
-aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNTID}.dkr.ecr.${REGION}.amazonaws.com
-docker build --no-cache -t ${REPOSITORYNAME} --build-arg hf_username="${HFUSERNAME}" --build-arg hf_token="${HFTOKEN}" .
-docker tag ${REPOSITORYNAME}:latest ${ACCOUNTID}.dkr.ecr.${REGION}.amazonaws.com/${REPOSITORYNAME}:latest
 
 echo "(4/6) Push Container"
 docker push ${ACCOUNTID}.dkr.ecr.${REGION}.amazonaws.com/${REPOSITORYNAME}:latest
