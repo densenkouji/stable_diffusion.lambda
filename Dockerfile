@@ -1,15 +1,17 @@
 FROM public.ecr.aws/ubuntu/ubuntu:20.04 as builder
-ARG hf_username
 ARG hf_token
+ARG hf_modelname
 WORKDIR /var/task/
-RUN apt-get update && apt-get install -y python3-pip curl build-essential gcc make git git-lfs && git lfs install --skip-repo
-RUN git clone https://${hf_username}:${hf_token}@huggingface.co/CompVis/stable-diffusion-v1-4
+# RUN apt-get update && apt-get install -y python3-pip curl build-essential gcc make git git-lfs && git lfs install --skip-repo
+RUN apt-get update && apt-get install -y python3-pip curl build-essential gcc make git
 RUN git clone https://github.com/huggingface/diffusers.git -b v0.4.2 --depth 1 
 WORKDIR /var/task/diffusers/
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 RUN pip install torch onnx transformers==4.23.0 onnxruntime ftfy
 RUN python3 ./setup.py install
-RUN python3 ./scripts/convert_stable_diffusion_checkpoint_to_onnx.py --model_path="../stable-diffusion-v1-4" --output_path="../stable_diffusion_onnx"
+# RUN python3 ./scripts/convert_stable_diffusion_checkpoint_to_onnx.py --model_path="../stable-diffusion-v1-4" --output_path="../stable_diffusion_onnx/"
+RUN python3 -c "from huggingface_hub import HfFolder; HfFolder.save_token('${hf_token}')"
+RUN python3 ./scripts/convert_stable_diffusion_checkpoint_to_onnx.py --model_path="${hf_modelname}" --output_path="../stable_diffusion_onnx/"
 
 FROM public.ecr.aws/lambda/python:3.9 as buildlibGL
 RUN yum -y update && yum -y install gcc make gcc-c++ zlib-devel bison bison-devel gzip glibc-static wget tar
